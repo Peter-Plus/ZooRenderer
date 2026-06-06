@@ -96,4 +96,48 @@ struct Matrix4x4 {
 	//A 这些方法可以通过类名直接调用，例如：
 	// Vector3 t(1, 2, 3);
 	// Matrix4x4 translationMatrix = Matrix4x4::Translate(t);
+
+
+	// 视图矩阵：把世界坐标系点变换到相机坐标系，
+	// 参数是相机位置eye、目标点target、上向量up,相机看向-z
+	//Q target是谁，物体的世界坐标吗？up又是谁？
+	//A target是相机要看的目标点，通常是场景中一个物体的世界坐标。up是一个向量，表示相机的上方向，通常是(0, 1, 0)，表示y轴向上。
+	static Matrix4x4 LookAt(const Vector3& eye, const Vector3& target, const Vector3& up) {
+		Vector3 zaxis = (eye - target).Normalized();// 相机的前向量
+		Vector3 xaxis = up.Cross(zaxis).Normalized();// 相机的右向量
+		Vector3 yaxis = zaxis.Cross(xaxis);// 相机的上向量
+		//Q 为什么这里y不直接用up.normalized()？
+		//A 这里y不直接用up.normalized()是因为up向量可能与zaxis向量不垂直，如果直接使用up.normalized()作为相机的上向量，可能会导致相机的坐标系不正交，从而引发变形和不正确的渲染结果。通过计算yaxis = zaxis.Cross(xaxis)，我们确保了相机的坐标系是正交的，即xaxis、yaxis和zaxis三者之间互相垂直，这样可以保证渲染结果的正确性和稳定性。
+		Matrix4x4 r = Identity();
+		// ========旋转部分
+		r.m[0][0] = xaxis.x; r.m[0][1] = xaxis.y; r.m[0][2] = xaxis.z;
+		r.m[1][0] = yaxis.x; r.m[1][1] = yaxis.y; r.m[1][2] = yaxis.z;
+		r.m[2][0] = zaxis.x; r.m[2][1] = zaxis.y; r.m[2][2] = zaxis.z;
+		//到此为止的3X3部分是旋转矩阵，把相机坐标系的轴对齐到世界坐标系
+		//该矩阵*任意世界点p，得到的是在相机坐标系下的坐标q，可以这样理解：
+		//q.x = xaxis·p（也就是二者点积的结果）= xaxis.x*p.x + xaxis.y*p.y + xaxis.z*p.z
+		//而q刚好等于上述矩阵乘以p的结果
+		// ========平移部分
+		r.m[0][3] = -xaxis.Dot(eye);
+		r.m[1][3] = -yaxis.Dot(eye);
+		r.m[2][3] = -zaxis.Dot(eye);
+		//这部分其实可以理解为：
+		//坐标系不动把摄像机当成原点，旧原点就是-eye，求出-eye在相机坐标系下各点的投影
+		//也就是旧原点在相机坐标系下的坐标，这个偏移就是平移部分的值
+		return r;
+	}
+
+	//透视投影矩阵，参数是视野角fov、宽高比aspect、近平面n、远平面f
+	static Matrix4x4 Perspective(float fovY, float aspect, float n, float f) {
+		Matrix4x4 r;
+		float t = 1.0f / std::tan(fovY * 0.5f);// 上边距
+		r.m[0][0] = t / aspect;
+		r.m[1][1] = t;
+		r.m[2][2] = -(f + n) / (f - n);
+		r.m[2][3] = -2.0f * f * n / (f - n);
+		r.m[3][2] = -1.0f;
+		return r;
+	}
+
+
 };
