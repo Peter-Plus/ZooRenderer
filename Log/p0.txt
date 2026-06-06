@@ -1,0 +1,5 @@
+0.创建C++控制台空项目，solution路径"G:\Toy\ZooRenderer\ZooRenderer"
+1.创建main.cpp printhello 编译通过
+2.日志记录，路径"G:\Toy\ZooRenderer\ZooRenderer\Log"
+3.创建.gitignore，排除编译产物
+4.创建github仓库并完成初次提交，url：https://github.com/Peter-Plus/ZooRenderer.git
