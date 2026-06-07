@@ -34,6 +34,7 @@ inline void DrawLine(Framebuffer& fb, int x0, int y0,
 //边函数
 //计算结果等于2维叉积，即ab x ap = |ab|*|ap|*sinθ,绝对值等于三角形面积两倍
 //但注意结果有正负，和顺序相关。可用于计算权重
+//规定绕序下面积应小于0，大于0为背面
 inline float EdgeFunc(const Vector2& a, const Vector2& b, const Vector2& p) {
 	return (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
 }

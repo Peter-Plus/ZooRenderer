@@ -128,7 +128,9 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Core\Camera.h" />
+    <ClInclude Include="Core\Clip.h" />
     <ClInclude Include="Core\Framebuffer.h" />
+    <ClInclude Include="Core\Light.h" />
     <ClInclude Include="Core\Raster.h" />
     <ClInclude Include="Core\Window.h" />
     <ClInclude Include="Math\Matrix.h" />

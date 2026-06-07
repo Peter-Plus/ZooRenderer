@@ -41,5 +41,11 @@
     <ClInclude Include="Core\Camera.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Core\Clip.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="Core\Light.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
