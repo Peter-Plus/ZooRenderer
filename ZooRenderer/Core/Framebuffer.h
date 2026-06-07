@@ -6,10 +6,13 @@
 
 // 我们自己的后台缓冲back buffer
 // 颜色统一用0xRRGGBB表示
+// 存储像素m_pixels和深度m_depth
 class Framebuffer {
 public:
 	Framebuffer(int width,int height)
-		:m_width(width), m_height(height), m_pixels(size_t(width)* height, 0) {
+		:m_width(width), m_height(height), 
+		m_pixels(size_t(width)* height, 0),
+		m_depth(size_t(width)*height,1e30f){
 	}
 	//Q 这里为什么要初始化m_pixels为size_t(width)* height, 0？这是什么东西看不懂
 	//A 这里初始化m_pixels为size_t(width)* height, 0是为了创建一个大小
@@ -19,6 +22,8 @@ public:
 	//Q size_t(width)* height是声明容器的数量，0是值对吗？但我还是看不懂
 	//size_t(width)* height是什么东西，size_t是什么API吗，为什么不直接width*height?
 	//A size_t是C++标准库中定义的一个无符号整数类型，通常用于表示对象的大小或容器的大小。这里使用size_t(width)是为了确保在计算像素数量时不会发生整数溢出，因为width和height可能是较大的值。直接使用width*height可能会导致整数溢出，特别是在32位系统上，而使用size_t可以避免这个问题。因此，size_t(width)* height是为了安全地计算像素数量，并且0是用来初始化每个像素的值，表示初始状态下所有像素都是黑色。
+	
+	//返回屏幕宽，像素边界索引记得-1
 	int Width() const { return m_width; }
 	int Height() const { return m_height; }
 	const uint32_t* Data() const { return m_pixels.data(); }
@@ -30,10 +35,24 @@ public:
 		for (uint32_t& p : m_pixels) p = color;
 	}
 
-	//单像素写入API
+	//深度初始化
+	void ClearDepth(float f = 1e30f) { for (float& d : m_depth) d = f; }
+
+	//单像素写入,不考虑深度
 	void SetPixel(int x, int y, uint32_t color) {
 		if (x < 0 || x >= m_width || y < 0 || y >= m_height) return;// 越界检查
 		m_pixels[size_t(y) * m_width + x] = color;
+	}
+
+	//单像素写入，考虑深度
+	void SetPixel(int x, int y, float z, uint32_t color) {
+		if (x < 0 || x >= m_width || y < 0 || y >= m_height) return;
+		size_t i = size_t(y) * m_width + x;
+		if (z < m_depth[i]) {
+			//更近，可以写入
+			m_depth[i] = z;
+			m_pixels[i] = color;
+		}
 	}
 
 	//把0-255的RGB颜色分量转换成0xRRGGBB格式的颜色值
@@ -45,5 +64,6 @@ private:
 	int m_width = 0;// 帧缓冲的宽度
 	int m_height = 0;// 帧缓冲的高度
 	std::vector<uint32_t> m_pixels;// 存储像素数据的向量，每个像素用一个32位无符号整数表示，格式为0xRRGGBB
+	std::vector<float> m_depth;
 };
 

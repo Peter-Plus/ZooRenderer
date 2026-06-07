@@ -10,69 +10,62 @@ int main() {
     const int   W = 800, H = 600;
     const float PI = 3.14159265f;
 
-    Window      window(W, H, L"ZooRenderer - Camera");
+    Window      window(W, H, L"ZooRenderer - Solid Cube (Z-Buffer)");
     Framebuffer fb(W, H);
 
     Camera cam;
-    cam.position = { 0, 1.5f, 5 };
-    cam.pitch = -0.15f;   // 略微低头，把地面网格和立方体框进画面
+    cam.position = { 3.0f, 2.5f, 3.5f };
+    cam.yaw = -0.7f; cam.pitch = -0.5f;   // 从一个角斜看立方体，一开始就能看到三个面
 
     Matrix4x4 proj = Matrix4x4::Perspective(PI / 3, float(W) / H, 0.1f, 100.0f);
 
-    // 立方体（世界原点，边长 2）
     Vector3 verts[8] = {
         {-1,-1,-1}, { 1,-1,-1}, { 1, 1,-1}, {-1, 1,-1},
         {-1,-1, 1}, { 1,-1, 1}, { 1, 1, 1}, {-1, 1, 1},
     };
-    int edges[12][2] = {
-        {0,1},{1,2},{2,3},{3,0}, {4,5},{5,6},{6,7},{7,4}, {0,4},{1,5},{2,6},{3,7},
+    struct Tri { int a, b, c; Vector3 color; };
+    Tri tris[12] = {
+        {0,1,2,{0.90f,0.25f,0.25f}}, {0,2,3,{0.90f,0.25f,0.25f}},  // 前 红
+        {5,4,7,{0.25f,0.80f,0.35f}}, {5,7,6,{0.25f,0.80f,0.35f}},  // 后 绿
+        {4,0,3,{0.30f,0.50f,0.90f}}, {4,3,7,{0.30f,0.50f,0.90f}},  // 左 蓝
+        {1,5,6,{0.95f,0.85f,0.25f}}, {1,6,2,{0.95f,0.85f,0.25f}},  // 右 黄
+        {3,2,6,{0.25f,0.80f,0.85f}}, {3,6,7,{0.25f,0.80f,0.85f}},  // 上 青
+        {4,5,1,{0.85f,0.35f,0.80f}}, {4,1,0,{0.85f,0.35f,0.80f}},  // 下 品红
     };
-
-    // 把世界坐标点投影到屏幕；返回 false 表示该点在相机平面/背后（暂时丢弃，阶段7做正式裁剪）
-    auto project = [&](const Matrix4x4& m, const Vector3& p, float& sx, float& sy) -> bool {
-        Vector4 clip = m * Vector4(p, 1.0f);
-        if (clip.w < 1e-4f) return false;
-        Vector3 ndc = clip.PerspectiveDivide();
-        sx = (ndc.x * 0.5f + 0.5f) * W;
-        sy = (1.0f - (ndc.y * 0.5f + 0.5f)) * H;
-        return true;
-        };
-    auto drawWorldLine = [&](const Matrix4x4& m, const Vector3& a, const Vector3& b, uint32_t col) {
-        float ax, ay, bx, by;
-        if (project(m, a, ax, ay) && project(m, b, bx, by))
-            DrawLine(fb, int(ax), int(ay), int(bx), int(by), col);
-        };
 
     auto prev = std::chrono::high_resolution_clock::now();
 
     while (window.ProcessMessages()) {
-        // 帧时间（秒）
         auto now = std::chrono::high_resolution_clock::now();
         float dt = std::chrono::duration<float>(now - prev).count();
         prev = now;
 
-        // 输入 → 相机
-        float mdx, mdy;
-        window.ConsumeMouseDelta(mdx, mdy);
+        float mdx, mdy; window.ConsumeMouseDelta(mdx, mdy);
         cam.Look(mdx, mdy);
         cam.Update(window.Keys(), dt);
 
-        // 没有 model 变换，所以这就是 view-projection
-        Matrix4x4 vp = proj * cam.ViewMatrix();
+        Matrix4x4 mvp = proj * cam.ViewMatrix();   // model = 单位矩阵
 
-        fb.Clear(Framebuffer::MakeColor(15, 15, 22));
-
-        // 地面网格（y = -1.5 平面，-10..10），给相机移动提供参照
-        uint32_t gridCol = Framebuffer::MakeColor(55, 55, 70);
-        for (int i = -10; i <= 10; ++i) {
-            drawWorldLine(vp, { float(i), -1.5f, -10 }, { float(i), -1.5f, 10 }, gridCol);
-            drawWorldLine(vp, { -10, -1.5f, float(i) }, { 10, -1.5f, float(i) }, gridCol);
+        // 顶点 → 屏幕坐标 + NDC 深度
+        Vector3 sp[8];
+        bool    valid[8];
+        for (int i = 0; i < 8; ++i) {
+            Vector4 clip = mvp * Vector4(verts[i], 1.0f);
+            valid[i] = clip.w > 1e-4f;             // 在相机前方才有效
+            if (!valid[i]) continue;
+            Vector3 ndc = clip.PerspectiveDivide();
+            sp[i] = { (ndc.x * 0.5f + 0.5f) * W,
+                      (1.0f - (ndc.y * 0.5f + 0.5f)) * H,
+                      ndc.z };
         }
 
-        // 立方体
-        uint32_t cubeCol = Framebuffer::MakeColor(120, 230, 160);
-        for (int e = 0; e < 12; ++e)
-            drawWorldLine(vp, verts[edges[e][0]], verts[edges[e][1]], cubeCol);
+        fb.Clear(Framebuffer::MakeColor(15, 15, 22));
+        fb.ClearDepth();                            // 每帧重置深度缓冲！
+
+        for (const Tri& t : tris) {
+            if (!valid[t.a] || !valid[t.b] || !valid[t.c]) continue;  // 跨相机平面的暂时跳过（阶段8做裁剪）
+            DrawTriangle(fb, sp[t.a], sp[t.b], sp[t.c], t.color, t.color, t.color);
+        }
 
         window.Present(fb);
     }
