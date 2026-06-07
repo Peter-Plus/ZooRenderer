@@ -1,5 +1,5 @@
 #include "Window.h"
-
+#include <windowsx.h>// 包含windowsx.h以使用GET_X_LPARAM和GET_Y_LPARAM宏来提取鼠标坐标
 //显示链接这两个库
 #pragma comment(lib,"user32.lib")
 #pragma comment(lib,"gdi32.lib")
@@ -32,7 +32,7 @@ Window::Window(int width, int height, const wchar_t* title)
 
 	m_hwnd = CreateWindowW(kClassName,title,style,
 		CW_USEDEFAULT, CW_USEDEFAULT,rc.right-rc.left,rc.bottom - rc.top,
-		nullptr, nullptr, hInst, nullptr);// 创建窗口
+		nullptr, nullptr, hInst, this);// 创建窗口
 	ShowWindow(m_hwnd, SW_SHOW);// 显示窗口
 
 	// 3 填好BITMAPINFO，告诉GDI我们要显示的帧缓冲格式
@@ -69,18 +69,76 @@ void Window::Present(const Framebuffer& fb) {
 	ReleaseDC(m_hwnd, hdc);
 }
 
+void Window::CaptureMouse() {
+	if (m_mouseCaptured) return;
+	m_mouseCaptured = true;
+	SetCapture(m_hwnd);// 捕获鼠标，确保即使鼠标移出窗口也能继续接收消息
+	//隐藏光标
+	ShowCursor(FALSE);
+	m_centerX = m_width / 2;
+	m_centerY = m_height / 2;
+	ResetCursorToCenter();
+}
+
+void Window::ReleaseMouse() {
+	if (!m_mouseCaptured) return;
+	m_mouseCaptured = false;
+	ReleaseCapture();
+	ShowCursor(TRUE);
+}
+
+void Window::ResetCursorToCenter() {
+	POINT pt{ m_centerX,m_centerY };
+	ClientToScreen(m_hwnd, &pt);
+	//m_ignoreNextMouseMove = true;
+	SetCursorPos(pt.x, pt.y);
+}
+
 LRESULT CALLBACK Window::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+	//创建时把窗口指针传进来，保存在窗口用户数据里，以后处理消息时就能拿到
+	if (msg == WM_NCCREATE) {
+		auto* cs = reinterpret_cast<CREATESTRUCT*>(lp);
+		SetWindowLongPtrW(hwnd, GWLP_USERDATA, 
+			reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
+	}
+	Window* self = reinterpret_cast<Window*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+
+
 	switch (msg)
 	{
 	case WM_DESTROY:
+		if (self) self->ReleaseMouse();
 		PostQuitMessage(0);// 发送退出消息
 		return 0;
-	case WM_PAINT: {
+	case WM_PAINT: 
 		PAINTSTRUCT ps;
 		BeginPaint(hwnd, &ps);
 		EndPaint(hwnd, &ps);
 		return 0;
-	}
+	case WM_KEYDOWN:
+		if (self && wp < 256) self->m_keys[wp] = true;// 更新按键状态
+		if (self && wp == VK_ESCAPE) self->ReleaseMouse();
+		return 0;
+	case WM_KEYUP:
+		if (self && wp < 256) self->m_keys[wp] = false;// 更新按键状态
+		return 0;
+	case WM_LBUTTONDOWN:
+		if (self) self->CaptureMouse();
+		return 0;
+	case WM_MOUSEMOVE:
+		if (self && self->m_mouseCaptured) {
+			int x = GET_X_LPARAM(lp);
+			int y = GET_Y_LPARAM(lp);
+			if (x == self->m_centerX && y == self->m_centerY) {
+				return 0;
+			}
+			float dx = float(x - self->m_centerX);
+			float dy = float(y - self->m_centerY);
+			self->m_mouseDX += dx;
+			self->m_mouseDY += dy;
+			self->ResetCursorToCenter();
+		}
+		return 0;
 	}
 	return DefWindowProcW(hwnd, msg, wp, lp);
 }

@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Forward 向量推导</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#080b11;
+    --ink2:#0d121b;
+    --panel:#0f1622;
+    --line:#1d2a3a;
+    --txt:#cdd9e6;
+    --dim:#6b7d92;
+    --grid:rgba(80,120,160,.07);
+    --yaw:#3fd0d8;     /* θ cyan */
+    --pitch:#f3b54a;   /* α amber */
+    --fvec:#ff6b5d;    /* forward hero */
+    --hvec:#3fd0d8;
+    --xcol:#5bd6e6;
+    --zcol:#6fe0a3;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:
+      radial-gradient(1200px 700px at 78% -10%, rgba(63,208,216,.06), transparent 60%),
+      radial-gradient(900px 600px at -5% 110%, rgba(243,181,74,.05), transparent 55%),
+      var(--ink);
+    background-attachment:fixed;
+    color:var(--txt);
+    font-family:"JetBrains Mono",monospace;
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .grid-bg{
+    position:fixed;inset:0;z-index:0;pointer-events:none;
+    background-image:
+      linear-gradient(var(--grid) 1px,transparent 1px),
+      linear-gradient(90deg,var(--grid) 1px,transparent 1px);
+    background-size:26px 26px;
+    mask-image:radial-gradient(ellipse 90% 80% at 50% 30%,#000 55%,transparent 100%);
+  }
+  .wrap{position:relative;z-index:1;max-width:1060px;margin:0 auto;padding:48px 22px 80px}
+
+  header{margin-bottom:34px}
+  .kicker{
+    font-size:12px;letter-spacing:.32em;color:var(--yaw);
+    text-transform:uppercase;display:flex;align-items:center;gap:10px;margin-bottom:14px
+  }
+  .kicker::before{content:"";width:30px;height:1px;background:var(--yaw)}
+  h1{
+    font-family:"Syne",sans-serif;font-weight:800;
+    font-size:clamp(30px,5.4vw,52px);line-height:1.04;margin:0;color:#eef4fb;
+    letter-spacing:-.01em;
+  }
+  h1 .hl{color:var(--fvec)}
+  .sub{color:var(--dim);margin-top:14px;max-width:640px;font-size:14px}
+  .sub b{color:var(--yaw);font-weight:500}
+  .sub i{color:var(--pitch);font-style:normal;font-weight:500}
+
+  .layout{display:grid;grid-template-columns:1.15fr .85fr;gap:22px;margin-top:36px}
+  @media(max-width:860px){.layout{grid-template-columns:1fr}}
+
+  .panel{
+    background:linear-gradient(180deg,var(--panel),var(--ink2));
+    border:1px solid var(--line);border-radius:16px;padding:20px;
+    box-shadow:0 24px 60px -30px rgba(0,0,0,.9), inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  .panel h2{
+    font-family:"Syne",sans-serif;font-size:13px;letter-spacing:.18em;
+    text-transform:uppercase;color:var(--dim);margin:0 0 16px;font-weight:700;
+    display:flex;align-items:center;gap:8px;
+  }
+  .panel h2 .dot{width:7px;height:7px;border-radius:50%;background:var(--fvec);box-shadow:0 0 10px var(--fvec)}
+
+  /* canvas / stage */
+  .stage{position:relative}
+  canvas{width:100%;height:auto;display:block;border-radius:10px;cursor:grab}
+  canvas:active{cursor:grabbing}
+  .legend{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:14px;font-size:11.5px;color:var(--dim)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .swatch{width:16px;height:3px;border-radius:2px;display:inline-block}
+
+  /* controls */
+  .ctrl{margin-top:18px;display:grid;gap:14px}
+  .slider-row{display:grid;grid-template-columns:64px 1fr 78px;align-items:center;gap:12px}
+  .slabel{font-size:13px;font-weight:700}
+  .slabel.theta{color:var(--yaw)}
+  .slabel.alpha{color:var(--pitch)}
+  input[type=range]{-webkit-appearance:none;appearance:none;height:4px;border-radius:4px;background:#1c2a3a;outline:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;background:#0d121b;border:2px solid var(--accent);cursor:pointer;box-shadow:0 0 10px var(--accent)}
+  input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:#0d121b;border:2px solid var(--accent);cursor:pointer;box-shadow:0 0 10px var(--accent)}
+  .sval{font-size:13px;text-align:right;color:var(--txt);font-variant-numeric:tabular-nums}
+  .theta input[type=range]{--accent:var(--yaw)}
+  .alpha input[type=range]{--accent:var(--pitch)}
+
+  .btns{display:flex;gap:10px;margin-top:6px;flex-wrap:wrap}
+  button{
+    font-family:"JetBrains Mono",monospace;font-size:12.5px;font-weight:700;
+    letter-spacing:.04em;padding:10px 16px;border-radius:9px;cursor:pointer;
+    border:1px solid var(--line);background:#121c2a;color:var(--txt);transition:.18s;
+  }
+  button:hover{border-color:var(--yaw);color:#fff;transform:translateY(-1px)}
+  button.primary{background:linear-gradient(180deg,#ff7d70,#e6534a);color:#1a0a08;border-color:transparent;box-shadow:0 8px 22px -8px var(--fvec)}
+  button.primary:hover{transform:translateY(-1px);filter:brightness(1.06)}
+
+  /* caption / step explainer */
+  .caption{
+    margin-top:16px;min-height:74px;border-left:3px solid var(--line);
+    padding:6px 0 6px 14px;transition:border-color .3s;
+  }
+  .caption.pitch{border-color:var(--pitch)}
+  .caption.yaw{border-color:var(--yaw)}
+  .caption.all{border-color:var(--fvec)}
+  .caption .ctag{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--dim)}
+  .caption .ctext{font-size:13.5px;color:var(--txt);margin-top:4px}
+  .caption .ctext code{color:var(--pitch);background:rgba(243,181,74,.08);padding:1px 5px;border-radius:4px}
+  .caption .ctext code.t{color:var(--yaw);background:rgba(63,208,216,.08)}
+
+  /* formula card */
+  .formula{font-size:18px;line-height:2.4;letter-spacing:.01em}
+  .frow{
+    display:grid;grid-template-columns:24px 22px 1fr;align-items:center;
+    padding:6px 12px;border-radius:9px;transition:.3s;border:1px solid transparent;
+  }
+  .frow .lhs{font-style:italic;font-weight:700;text-align:center}
+  .frow .eq{text-align:center;color:var(--dim)}
+  .frow.x .lhs{color:var(--xcol)} .frow.y .lhs{color:var(--pitch)} .frow.z .lhs{color:var(--zcol)}
+  .frow.lit{background:rgba(255,255,255,.04);border-color:var(--line)}
+  .frow.lit-pitch{background:rgba(243,181,74,.07);border-color:rgba(243,181,74,.3)}
+  .frow.lit-yaw{background:rgba(63,208,216,.07);border-color:rgba(63,208,216,.3)}
+  .frow.lit-all{background:rgba(255,107,93,.07);border-color:rgba(255,107,93,.3)}
+  .th{color:var(--yaw);font-style:italic}
+  .al{color:var(--pitch);font-style:italic}
+  .op{color:var(--dim)}
+  .norm{margin-top:10px;font-size:11.5px;color:var(--dim);padding:0 12px}
+  .readout{
+    margin-top:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;
+    font-size:12px;
+  }
+  .readout div{background:#0c141f;border:1px solid var(--line);border-radius:8px;padding:8px 10px;text-align:center}
+  .readout .lab{color:var(--dim);font-size:10px;letter-spacing:.1em}
+  .readout .num{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;margin-top:2px}
+  .readout .rx .num{color:var(--xcol)} .readout .ry .num{color:var(--pitch)} .readout .rz .num{color:var(--zcol)}
+
+  /* code */
+  .codecard{margin-top:22px}
+  pre{
+    margin:0;background:#0a0f17;border:1px solid var(--line);border-radius:12px;
+    padding:18px 20px;overflow:auto;font-size:13px;line-height:1.85;
+  }
+  .cm{color:#54677c}        /* comment */
+  .kw{color:#ff8b7d}        /* keyword/type */
+  .fn{color:#9fd3ff}        /* function */
+  .num2{color:#f3b54a}
+  .cth{color:var(--yaw);font-weight:700}
+  .cal{color:var(--pitch);font-weight:700}
+  .note{color:var(--dim);font-size:12.5px;margin-top:14px;line-height:1.75}
+  .note b{color:var(--txt);font-weight:500}
+  footer{margin-top:44px;text-align:center;color:#3c4a5a;font-size:11px;letter-spacing:.1em}
+</style>
+</head>
+<body>
+<div class="grid-bg"></div>
+<div class="wrap">
+
+  <header>
+    <div class="kicker">FPS Camera · Right-handed</div>
+    <h1>从 yaw / pitch 推导 <span class="hl">Forward</span> 向量</h1>
+    <p class="sub">约定：<b>θ = yaw</b>（绕 Y 轴左右转）、<i>α = pitch</i>（上下俯仰），基准朝向为 −Z。整套公式本质上是「先竖直拆，再水平拆」的两步正交投影。</p>
+  </header>
+
+  <div class="layout">
+    <!-- LEFT: 3D stage -->
+    <div class="panel stage">
+      <h2><span class="dot"></span>三维视图</h2>
+      <canvas id="cv" width="600" height="480"></canvas>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--fvec)"></i>Forward（单位向量）</span>
+        <span><i class="swatch" style="background:var(--hvec)"></i>水平投影 |H| = cos α</span>
+        <span><i class="swatch" style="background:var(--pitch)"></i>θ / α 角</span>
+        <span><i class="swatch" style="background:var(--zcol)"></i>z 分量</span>
+      </div>
+
+      <div class="ctrl">
+        <div class="slider-row theta">
+          <span class="slabel theta">θ yaw</span>
+          <input id="yaw" type="range" min="-180" max="180" step="1" value="40">
+          <span class="sval" id="yawv">40°</span>
+        </div>
+        <div class="slider-row alpha">
+          <span class="slabel alpha">α pitch</span>
+          <input id="pitch" type="range" min="-89" max="89" step="1" value="28">
+          <span class="sval" id="pitchv">28°</span>
+        </div>
+      </div>
+
+      <div class="btns">
+        <button class="primary" id="play">▶ 播放推导</button>
+        <button id="reset">重置视角</button>
+      </div>
+
+      <div class="caption" id="cap">
+        <div class="ctag">交互模式</div>
+        <div class="ctext">拖动滑块改变 θ 与 α，观察 Forward 向量如何随之转动。点击「播放推导」看分步拆解。</div>
+      </div>
+    </div>
+
+    <!-- RIGHT: formula + readout -->
+    <div>
+      <div class="panel">
+        <h2><span class="dot"></span>分量公式</h2>
+        <div class="formula">
+          <div class="frow x" id="rx"><span class="lhs">x</span><span class="eq">=</span><span><span class="th">sin θ</span> <span class="op">·</span> <span class="al">cos α</span></span></div>
+          <div class="frow y" id="ry"><span class="lhs">y</span><span class="eq">=</span><span><span class="al">sin α</span></span></div>
+          <div class="frow z" id="rz"><span class="lhs">z</span><span class="eq">=</span><span><span class="op">−</span><span class="th">cos θ</span> <span class="op">·</span> <span class="al">cos α</span></span></div>
+        </div>
+        <div class="norm">θ = yaw，α = pitch。|Forward| = √(x²+y²+z²) = 1，天然为单位向量。</div>
+        <div class="readout">
+          <div class="rx"><div class="lab">X</div><div class="num" id="ox">0.00</div></div>
+          <div class="ry"><div class="lab">Y</div><div class="num" id="oy">0.00</div></div>
+          <div class="rz"><div class="lab">Z</div><div class="num" id="oz">0.00</div></div>
+        </div>
+      </div>
+
+      <div class="panel codecard">
+        <h2><span class="dot"></span>源码对照</h2>
+        <pre><code><span class="kw">Vector3</span> <span class="fn">Forward</span>() <span class="kw">const</span> {
+    <span class="kw">return</span> <span class="kw">Vector3</span>(
+        std::<span class="fn">sin</span>(<span class="cth">yaw</span>) * std::<span class="fn">cos</span>(<span class="cal">pitch</span>),   <span class="cm">// x</span>
+        std::<span class="fn">sin</span>(<span class="cal">pitch</span>),                <span class="cm">// y</span>
+        -std::<span class="fn">cos</span>(<span class="cth">yaw</span>) * std::<span class="fn">cos</span>(<span class="cal">pitch</span>)   <span class="cm">// z</span>
+    ).<span class="fn">Normalized</span>();
+}</code></pre>
+        <div class="note">
+          <b>关于 Normalized()：</b> 数学上 (x,y,z) 已是单位向量，调用归一化主要是防浮点误差累积，逻辑上可省。<br>
+          <b>关于 −Z：</b> 当 yaw=0、pitch=0 时 Forward=(0,0,−1)，即默认看向 −Z，这是右手系（OpenGL 风格）的常见取向。
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>·  Forward = ( sinθcosα , sinα , −cosθcosα )  ·</footer>
+</div>
+
+<script>
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const DPR = Math.min(window.devicePixelRatio||1, 2);
+const CSSW = 600, CSSH = 480;
+cv.width = CSSW*DPR; cv.height = CSSH*DPR;
+cv.style.aspectRatio = CSSW+'/'+CSSH;
+ctx.scale(DPR,DPR);
+
+const cx = 300, cy = 300, S = 130;
+const VAZ = 35*Math.PI/180, VEL = 22*Math.PI/180;
+
+// world -> screen (azimuth around Y, then tilt around X, orthographic)
+function proj(p){
+  const ca=Math.cos(VAZ), sa=Math.sin(VAZ);
+  let x1 = p.x*ca + p.z*sa;
+  let z1 = -p.x*sa + p.z*ca;
+  let y1 = p.y;
+  const ce=Math.cos(VEL), se=Math.sin(VEL);
+  let y2 = y1*ce - z1*se;
+  let z2 = y1*se + z1*ce;
+  return { x: cx + S*x1, y: cy - S*y2, depth: z2 };
+}
+
+// ---- state ----
+let yaw = 40*Math.PI/180;
+let pitch = 28*Math.PI/180;
+let tYaw = yaw, tPitch = pitch;   // animation targets
+let phase = 'idle';
+
+// group alphas (smoothly tweened)
+const A = { axes:1, fvec:1, hvec:1, ycomp:.85, xz:.85, parc:.85, yarc:.85 };
+const T = { ...A };
+
+function setPhase(p){
+  phase = p;
+  if(p==='idle'){ Object.assign(T,{axes:1,fvec:1,hvec:1,ycomp:.85,xz:.85,parc:.85,yarc:.85}); }
+  if(p==='pitch'){ Object.assign(T,{axes:.32,fvec:1,hvec:1,ycomp:1,xz:.1,parc:1,yarc:.08}); }
+  if(p==='yaw'){ Object.assign(T,{axes:.32,fvec:.55,hvec:1,ycomp:.12,xz:1,parc:.08,yarc:1}); }
+  if(p==='all'){ Object.assign(T,{axes:.7,fvec:1,hvec:1,ycomp:1,xz:1,parc:1,yarc:1}); }
+  // formula row highlight
+  ['rx','ry','rz'].forEach(id=>{const e=document.getElementById(id);e.className=e.className.replace(/\s*lit\S*/g,'');});
+  const cap=document.getElementById('cap');
+  cap.className='caption'+(p==='idle'?'':' '+p);
+  if(p==='pitch'){
+    document.getElementById('ry').classList.add('lit-pitch');
+    setCap('第 1 步 · 竖直平面拆 pitch','把单位向量投到「竖直平面」。竖直分量 <code>y = sin α</code>，落在水平面上的影子长度为 <code>|H| = cos α</code>。');
+  }else if(p==='yaw'){
+    document.getElementById('rx').classList.add('lit-yaw');
+    document.getElementById('rz').classList.add('lit-yaw');
+    setCap('第 2 步 · 水平面拆 yaw','再把长度为 cos α 的水平影子 H 在 XZ 平面上按 θ 拆开：<code class="t">x = sinθ·cosα</code>、<code class="t">z = −cosθ·cosα</code>（从 −Z 起量）。');
+  }else if(p==='all'){
+    document.getElementById('rx').classList.add('lit-all');
+    document.getElementById('ry').classList.add('lit-all');
+    document.getElementById('rz').classList.add('lit-all');
+    setCap('合成 · Forward','三个分量拼起来就是 (sinθcosα, sinα, −cosθcosα)，长度恒为 1。这正是源码里的那一行。');
+  }else{
+    setCap('交互模式','拖动滑块改变 θ 与 α，观察 Forward 向量如何随之转动。点击「播放推导」看分步拆解。');
+  }
+}
+function setCap(tag,text){
+  document.getElementById('cap').innerHTML='<div class="ctag">'+tag+'</div><div class="ctext">'+text+'</div>';
+}
+
+// ---- drawing helpers ----
+function line(a,b,col,w,dash){
+  ctx.save();ctx.beginPath();ctx.setLineDash(dash||[]);
+  ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);
+  ctx.strokeStyle=col;ctx.lineWidth=w||1.5;ctx.lineCap='round';ctx.stroke();ctx.restore();
+}
+function arrow(aW,bW,col,w){
+  const a=proj(aW), b=proj(bW);
+  line(a,b,col,w);
+  const ang=Math.atan2(b.y-a.y,b.x-a.x), h=10;
+  ctx.save();ctx.fillStyle=col;ctx.beginPath();
+  ctx.moveTo(b.x,b.y);
+  ctx.lineTo(b.x-h*Math.cos(ang-.4),b.y-h*Math.sin(ang-.4));
+  ctx.lineTo(b.x-h*Math.cos(ang+.4),b.y-h*Math.sin(ang+.4));
+  ctx.closePath();ctx.fill();ctx.restore();
+}
+function dot(pW,col,r){const p=proj(pW);ctx.save();ctx.fillStyle=col;ctx.beginPath();ctx.arc(p.x,p.y,r||3.5,0,7);ctx.fill();ctx.restore();}
+function label(pW,txt,col,off){
+  const p=proj(pW);ctx.save();
+  ctx.font='600 13px "JetBrains Mono",monospace';ctx.fillStyle=col;
+  ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(txt,p.x+(off?off[0]:0),p.y+(off?off[1]:0));ctx.restore();
+}
+function withAlpha(a,fn){ctx.save();ctx.globalAlpha=Math.max(0,Math.min(1,a));fn();ctx.restore();}
+
+function draw(){
+  ctx.clearRect(0,0,CSSW,CSSH);
+
+  const x = Math.sin(yaw)*Math.cos(pitch);
+  const y = Math.sin(pitch);
+  const z = -Math.cos(yaw)*Math.cos(pitch);
+  const ch = Math.cos(pitch);                 // |H|
+  const Hdir = {x:Math.sin(yaw),y:0,z:-Math.cos(yaw)}; // unit horizontal dir
+  const O={x:0,y:0,z:0};
+  const F={x,y,z};
+  const H={x:x,y:0,z:z};
+
+  // ground reference quad (XZ plane hint)
+  withAlpha(A.axes*0.5,()=>{
+    const g=1.25;
+    const c1=proj({x:-g,y:0,z:-g}),c2=proj({x:g,y:0,z:-g}),c3=proj({x:g,y:0,z:g}),c4=proj({x:-g,y:0,z:g});
+    ctx.beginPath();ctx.moveTo(c1.x,c1.y);ctx.lineTo(c2.x,c2.y);ctx.lineTo(c3.x,c3.y);ctx.lineTo(c4.x,c4.y);ctx.closePath();
+    ctx.fillStyle='rgba(60,90,120,.06)';ctx.fill();
+    ctx.strokeStyle='rgba(80,110,140,.18)';ctx.lineWidth=1;ctx.stroke();
+  });
+
+  // axes
+  withAlpha(A.axes,()=>{
+    arrow(O,{x:1.35,y:0,z:0},'#5a6b7a',1.5); label({x:1.5,y:0,z:0},'X','#7d8ea0');
+    arrow(O,{x:0,y:1.25,z:0},'#5a6b7a',1.5); label({x:0,y:1.4,z:0},'Y','#7d8ea0');
+    arrow(O,{x:0,y:0,z:1.35},'#5a6b7a',1.5); label({x:0,y:0,z:1.5},'+Z','#7d8ea0');
+    // -Z reference (forward base)
+    line(proj(O),proj({x:0,y:0,z:-1.3}),'rgba(63,208,216,.35)',1.5,[5,5]);
+    label({x:0,y:0,z:-1.45},'−Z','rgba(63,208,216,.6)');
+  });
+
+  // yaw arc (θ) in XZ plane, from -Z to Hdir
+  withAlpha(A.yarc,()=>{
+    const R=0.55, steps=40;
+    ctx.beginPath();
+    for(let i=0;i<=steps;i++){
+      const t=yaw*i/steps;
+      const p=proj({x:Math.sin(t)*R,y:0,z:-Math.cos(t)*R});
+      i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);
+    }
+    ctx.strokeStyle='var(--yaw)';ctx.strokeStyle='#3fd0d8';ctx.lineWidth=2.5;ctx.stroke();
+    const tm=yaw/2;
+    label({x:Math.sin(tm)*(R+0.18),y:0,z:-Math.cos(tm)*(R+0.18)},'θ','#3fd0d8');
+  });
+
+  // horizontal projection H (cyan)
+  withAlpha(A.hvec,()=>{ arrow(O,H,'#3fd0d8',3); });
+
+  // xz decomposition rectangle (x along X, z along Z)
+  withAlpha(A.xz,()=>{
+    const Px={x:x,y:0,z:0}, Pz={x:0,y:0,z:z};
+    line(proj(O),proj(Px),'#5bd6e6',2.5);                 // x part
+    line(proj(Px),proj(H),'#6fe0a3',2.5);                 // z part (shifted)
+    line(proj(O),proj(Pz),'#6fe0a3',1.4,[4,4]);
+    line(proj(Pz),proj(H),'#5bd6e6',1.4,[4,4]);
+    label(Px,'x','#5bd6e6',[0,16]);
+    label({x:x,y:0,z:z/2},'z','#6fe0a3',[16,0]);
+  });
+
+  // vertical component y (amber dashed) from H tip up to F tip
+  withAlpha(A.ycomp,()=>{
+    line(proj(H),proj(F),'#f3b54a',2,[5,4]);
+    label({x:x,y:y/2,z:z},'y=sinα','#f3b54a',[26,0]);
+  });
+
+  // pitch arc (α) in vertical plane between H and F
+  withAlpha(A.parc,()=>{
+    const R=0.45, steps=36;
+    ctx.beginPath();
+    for(let i=0;i<=steps;i++){
+      const t=pitch*i/steps;
+      const px=(Math.cos(t)*Hdir.x)*R;
+      const py=(Math.sin(t))*R;
+      const pz=(Math.cos(t)*Hdir.z)*R;
+      const p=proj({x:px,y:py,z:pz});
+      i?ctx.lineTo(p.x,p.y):ctx.moveTo(p.x,p.y);
+    }
+    ctx.strokeStyle='#f3b54a';ctx.lineWidth=2.5;ctx.stroke();
+    const tm=pitch/2;
+    label({x:Math.cos(tm)*Hdir.x*(R+0.16),y:Math.sin(tm)*(R+0.16),z:Math.cos(tm)*Hdir.z*(R+0.16)},'α','#f3b54a');
+  });
+
+  // |H| label
+  withAlpha(A.hvec*0.9,()=>{ label({x:x/2,y:0,z:z/2},'cosα','#3fd0d8',[ -6,-14]); });
+
+  // Forward vector (hero)
+  withAlpha(A.fvec,()=>{
+    arrow(O,F,'#ff6b5d',4);
+    dot(F,'#ff6b5d',5);
+    label(F,'F','#ff8b7d',[18,-12]);
+  });
+  dot(O,'#cdd9e6',3);
+
+  // readout
+  document.getElementById('ox').textContent=x.toFixed(2);
+  document.getElementById('oy').textContent=y.toFixed(2);
+  document.getElementById('oz').textContent=z.toFixed(2);
+}
+
+// ---- animation loop ----
+function lerp(a,b,t){return a+(b-a)*t;}
+function tick(){
+  // tween angles toward target
+  yaw   = lerp(yaw,   tYaw,   0.12);
+  pitch = lerp(pitch, tPitch, 0.12);
+  // tween alphas
+  for(const k in A){ A[k]=lerp(A[k],T[k],0.14); }
+  draw();
+  requestAnimationFrame(tick);
+}
+
+// ---- controls ----
+const yawEl=document.getElementById('yaw'), pitchEl=document.getElementById('pitch');
+const yawV=document.getElementById('yawv'), pitchV=document.getElementById('pitchv');
+function syncSliders(){
+  yawV.textContent=Math.round(tYaw*180/Math.PI)+'°';
+  pitchV.textContent=Math.round(tPitch*180/Math.PI)+'°';
+}
+function userInteract(){
+  playToken++;            // cancel any running playback
+  if(phase!=='idle') setPhase('idle');
+}
+yawEl.addEventListener('input',()=>{ userInteract(); tYaw=yawEl.value*Math.PI/180; syncSliders(); });
+pitchEl.addEventListener('input',()=>{ userInteract(); tPitch=pitchEl.value*Math.PI/180; syncSliders(); });
+document.getElementById('reset').addEventListener('click',()=>{
+  userInteract();
+  tYaw=40*Math.PI/180; tPitch=28*Math.PI/180;
+  yawEl.value=40; pitchEl.value=28; syncSliders();
+});
+
+// ---- play derivation ----
+let playToken=0;
+function wait(ms,token){return new Promise(res=>{const id=setInterval(()=>{if(token!==playToken){clearInterval(id);res(false);}},60);setTimeout(()=>{clearInterval(id);res(token===playToken);},ms);});}
+async function play(){
+  const token=++playToken;
+  // set demo angles
+  tYaw=42*Math.PI/180; tPitch=30*Math.PI/180;
+  yawEl.value=42; pitchEl.value=30; syncSliders();
+  setPhase('pitch');
+  if(!await wait(4200,token))return;
+  setPhase('yaw');
+  if(!await wait(4400,token))return;
+  setPhase('all');
+  if(!await wait(4200,token))return;
+  if(token===playToken) setPhase('idle');
+}
+document.getElementById('play').addEventListener('click',play);
+
+syncSliders();
+setPhase('idle');
+tick();
+</script>
+</body>
+</html>
